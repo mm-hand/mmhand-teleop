@@ -52,26 +52,26 @@ class RetargetTests(unittest.TestCase):
     def test_robot_contract_and_fingertip_frames(self):
         model = self.model
         self.assertEqual(model.names, ROBOT_JOINT_NAMES)
-        self.assertEqual(len(model.fk(model.seed)), 32)
+        self.assertEqual(len(model.fk(model.seed)), 50)
         self.assertTrue(np.all(model.lower < model.upper))
         points, directions = model.fingertip_pads(model.seed)
         self.assertEqual((points.shape, directions.shape), ((5, 3), (5, 3)))
         np.testing.assert_allclose(np.linalg.norm(directions, axis=1), 1)
         width = model.palm_width(model.seed)
-        self.assertAlmostEqual(width, 0.0743529722472478)
+        self.assertAlmostEqual(width, 0.07435198857461715)
         self.assertAlmostEqual(
             width, model.palm_width((model.lower + model.upper) / 2)
         )
         mesh_tip = model.middle_fingertip_surface_point(model.seed)
-        middle_link = model.fk(model.seed)["finger_2_fingertip_1"]
+        middle_link = model.fk(model.seed)["link_finger_tip_3"]
         np.testing.assert_allclose(
             mesh_tip,
             middle_link[:3, :3] @ model.middle_fingertip_surface_local
             + middle_link[:3, 3],
         )
         self.assertGreater(
-            model.middle_fingertip_surface_local[0],
-            model.joints["2-tip"]["origin"][0, 3],
+            model.middle_fingertip_surface_local[1],
+            model.joints["2-tip"]["origin"][1, 3],
         )
         self.assertAlmostEqual(
             model.middle_fingertip_surface_distance(model.seed),

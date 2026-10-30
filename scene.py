@@ -98,8 +98,8 @@ def robot_camera_pose(model):
     palm_normal = model.palm_frame[:, 2]
     transforms = model.fk(model.seed)
     base = (
-        transforms["finger_1_proximal_phalanx_1"][:3, 3]
-        - transforms["finger_4_proximal_phalanx_1"][:3, 3]
+        transforms["link_proximal_phalanx_2"][:3, 3]
+        - transforms["link_proximal_phalanx_5"][:3, 3]
     )
     normal = palm_normal - base * np.dot(palm_normal, base) / np.dot(base, base)
     normal /= np.linalg.norm(normal)

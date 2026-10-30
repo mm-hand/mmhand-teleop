@@ -14,42 +14,44 @@ import config as C
 from input.frame import InitialJointAngles, compute_cmc_frame, initial_joint_angles_from_points
 
 EPS = 1e-9
+# 新 CAD 的连杆后缀：1=Thumb, 2=Index, 3=Middle, 4=Ring, 5=Little。
+FINGER_SUFFIX = ((2, "index"), (3, "middle"), (4, "ring"), (5, "little"))
 ROBOT_TIPS = ("5-tip_Link", "1-tip_Link", "2-tip_Link", "3-tip_Link", "4-tip_Link")
-ROBOT_MIDDLE_FINGERTIP = "finger_2_fingertip_1"
+ROBOT_MIDDLE_FINGERTIP = "link_finger_tip_3"
 ROBOT_FINGERS = tuple(
     (
-        f"finger_{finger}_proximal_phalanx_1",
-        f"finger_{finger}_distal_phalanx_1",
-        f"finger_{finger}_fingertip_1",
-        f"{finger}-tip_Link",
+        f"link_proximal_phalanx_{suffix}",
+        f"link_distal_phalanx_{suffix}",
+        f"link_finger_tip_{suffix}",
+        f"{suffix - 1}-tip_Link",
     )
-    for finger in range(1, 5)
+    for suffix, _ in FINGER_SUFFIX
 )
 ROBOT_FINGER_JOINTS = tuple(
     (
-        f"{name}_MCP_AA",
-        f"{name}_MCP_FE",
-        f"finger_{finger}_distal_phalanx_1_PIP_Joint",
-        f"finger_{finger}_fingertip_1_DIP_Joint",
+        f"{name}_aa_joint",
+        f"{name}_mcp_fe_joint",
+        f"{name}_pip_joint",
+        f"{name}_dip_joint",
     )
-    for name, finger in zip(("Index", "Middle", "Ring", "Little"), range(1, 5))
+    for _, name in FINGER_SUFFIX
 )
 # Standard21 landmark -> URDF link; the same order the human input uses, so the
 # robot can be measured with the same CMC frame and the same bone lengths.
 ROBOT_STANDARD21_LINKS = (
     "base_link",
-    "mmhand_thumb_1_thumb_base_1",
-    "mmhand_thumb_1_abduction_adduction_link_without_fin_1",
-    "mmhand_thumb_1_finger_7_proximal_phalanx_1",
+    "link_left_thumb_base_1",
+    "link_aa_without_fin_1",
+    "link_proximal_phalanx_1",
     "5-tip_Link",
 ) + tuple(
     link
-    for finger in range(1, 5)
+    for suffix, _ in FINGER_SUFFIX
     for link in (
-        f"finger_{finger}_proximal_phalanx_1",
-        f"finger_{finger}_distal_phalanx_1",
-        f"finger_{finger}_fingertip_1",
-        f"{finger}-tip_Link",
+        f"link_proximal_phalanx_{suffix}",
+        f"link_distal_phalanx_{suffix}",
+        f"link_finger_tip_{suffix}",
+        f"{suffix - 1}-tip_Link",
     )
 )
 
@@ -256,7 +258,7 @@ class RobotModel:
         # Legacy aliases: the display and diagnostics still speak in palm-frame terms.
         self.palm_frame = self.cmc_frame
         self.palm_position = self.cmc_origin
-        cmc = self.joints["Thumb_CMC"]
+        cmc = self.joints["thumb_cmc_joint"]
         cmc_frame = transforms[cmc["parent"]] @ cmc["origin"]
         self.cmc_axis = _unit(cmc_frame[:3, :3] @ cmc["axis"])
         self.finger_gain, self.finger_offset = self._calibrate_finger_angles()
@@ -277,7 +279,7 @@ class RobotModel:
             vertices @ visual_transform[:3, :3].T
             + visual_transform[:3, 3]
         )
-        self.middle_fingertip_surface_local = vertices[np.argmax(vertices[:, 0])]
+        self.middle_fingertip_surface_local = vertices[np.argmax(vertices[:, 1])]
         self.urdf_palm_length = self.middle_fingertip_surface_distance(self.seed)
 
     def _forward(self, q, jacobian=False):
@@ -351,12 +353,12 @@ class RobotModel:
 
         _, origins, _ = self._forward(np.asarray(q, float), True)
         return float(np.linalg.norm(
-            origins[self.index["Index_MCP_AA"]]
-            - origins[self.index["Little_MCP_AA"]]
+            origins[self.index["index_aa_joint"]]
+            - origins[self.index["little_aa_joint"]]
         ))
 
     def middle_fingertip_surface_point(self, q):
-        """Return the Middle mesh's distal-most +X vertex in robot space."""
+        """Return the Middle mesh's distal-most +Y vertex in robot space."""
 
         transform = self.fk(q)[ROBOT_MIDDLE_FINGERTIP]
         return (

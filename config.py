@@ -1,7 +1,7 @@
 from pathlib import Path
 
 _ROOT = Path(__file__).resolve().parent
-URDF_PATH = _ROOT / "assets/mmhand/urdf/mmhand_collision_coacd.urdf"
+URDF_PATH = _ROOT / "assets/mmhand/urdf/mmhand.urdf"
 WILOR_ASSET_DIR = _ROOT / "input/wilor/assets"
 
 
@@ -68,27 +68,27 @@ MANUS_THUMB_PAD_ROTATION_DEG = 45.0
 
 # MMHand ROS/FK 数组顺序；每个元素对应固定的 J00～J20。
 ROBOT_JOINT_NAMES = (
-    "Little_MCP_AA",                                  # J00：小指 MCP 外展/内收。
-    "Little_MCP_FE",                                  # J01：小指 MCP 屈曲/伸展。
-    "finger_4_distal_phalanx_1_PIP_Joint",            # J02：小指 PIP 屈曲。
-    "finger_4_fingertip_1_DIP_Joint",                 # J03：小指 DIP 屈曲。
-    "Ring_MCP_AA",                                    # J04：无名指 MCP 外展/内收。
-    "Ring_MCP_FE",                                    # J05：无名指 MCP 屈曲/伸展。
-    "finger_3_distal_phalanx_1_PIP_Joint",            # J06：无名指 PIP 屈曲。
-    "finger_3_fingertip_1_DIP_Joint",                 # J07：无名指 DIP 屈曲。
-    "Middle_MCP_AA",                                  # J08：中指 MCP 外展/内收。
-    "Middle_MCP_FE",                                  # J09：中指 MCP 屈曲/伸展。
-    "finger_2_distal_phalanx_1_PIP_Joint",            # J10：中指 PIP 屈曲。
-    "finger_2_fingertip_1_DIP_Joint",                 # J11：中指 DIP 屈曲。
-    "Index_MCP_AA",                                   # J12：食指 MCP 外展/内收。
-    "Index_MCP_FE",                                   # J13：食指 MCP 屈曲/伸展。
-    "finger_1_distal_phalanx_1_PIP_Joint",            # J14：食指 PIP 屈曲。
-    "finger_1_fingertip_1_DIP_Joint",                 # J15：食指 DIP 屈曲。
-    "Thumb_MCP_AA",                                   # J16：拇指 MCP 外展/内收。
-    "Thumb_MCP_FE",                                   # J17：拇指 MCP 屈曲/伸展。
-    "mmhand_thumb_1_finger_7_distal_phalanx_1_PIP_Joint",  # J18：拇指 PIP 屈曲。
-    "mmhand_thumb_1_finger_7_fingertip_1_DIP_Joint",       # J19：拇指 DIP 屈曲。
-    "Thumb_CMC",                                      # J20：拇指 CMC 旋转。
+    "little_aa_joint",                                # J00：小指 MCP 外展/内收。
+    "little_mcp_fe_joint",                            # J01：小指 MCP 屈曲/伸展。
+    "little_pip_joint",                               # J02：小指 PIP 屈曲。
+    "little_dip_joint",                               # J03：小指 DIP 屈曲。
+    "ring_aa_joint",                                  # J04：无名指 MCP 外展/内收。
+    "ring_mcp_fe_joint",                              # J05：无名指 MCP 屈曲/伸展。
+    "ring_pip_joint",                                 # J06：无名指 PIP 屈曲。
+    "ring_dip_joint",                                 # J07：无名指 DIP 屈曲。
+    "middle_aa_joint",                                # J08：中指 MCP 外展/内收。
+    "middle_mcp_fe_joint",                            # J09：中指 MCP 屈曲/伸展。
+    "middle_pip_joint",                               # J10：中指 PIP 屈曲。
+    "middle_dip_joint",                               # J11：中指 DIP 屈曲。
+    "index_aa_joint",                                 # J12：食指 MCP 外展/内收。
+    "index_mcp_fe_joint",                             # J13：食指 MCP 屈曲/伸展。
+    "index_pip_joint",                                # J14：食指 PIP 屈曲。
+    "index_dip_joint",                                # J15：食指 DIP 屈曲。
+    "thumb_aa_joint",                                 # J16：拇指 MCP 外展/内收。
+    "thumb_mcp_fe_joint",                             # J17：拇指 MCP 屈曲/伸展。
+    "thumb_pip_joint",                                # J18：拇指 PIP 屈曲。
+    "thumb_dip_joint",                                # J19：拇指 DIP 屈曲。
+    "thumb_cmc_joint",                                # J20：拇指 CMC 旋转。
 )
 # MMHand retarget --------------------------------------------------------------
 
