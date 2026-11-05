@@ -27,34 +27,9 @@ from retarget import (
     human_vector_features,
 )
 from ros import RosOutput
-from viewer import (
-    HUMAN_DISPLAY_PALM_WIDTH,
-    VECTOR_ITEMS, Viewer, _angle_text, _arrow_points,
-    _bind_dashboard_server,
-    _human_display_frame, _human_residual_vector_data, _latency_text,
-    _loss_text, _pad_angle_errors, _render_time_text,
-    _robot_residual_vector_data, _timing_breakdown_text,
-    _vector_group_info, _vector_label,
-)
+from scene import HUMAN_DISPLAY_PALM_WIDTH, human_display_frame
 
 PAD_DIRECTIONS = np.tile((0.0, 0.0, -1.0), (5, 1))
-
-
-class _SlowViewer:
-    def update(self, *_args, **_kwargs):
-        time.sleep(0.1)
-        return True
-
-    def close(self):
-        pass
-
-
-class _FailingViewer:
-    def update(self, *_args, **_kwargs):
-        raise RuntimeError("fake viewer failure")
-
-    def close(self):
-        pass
 
 
 def hand():
@@ -82,11 +57,6 @@ class RetargetTests(unittest.TestCase):
         points, directions = model.fingertip_pads(model.seed)
         self.assertEqual((points.shape, directions.shape), ((5, 3), (5, 3)))
         np.testing.assert_allclose(np.linalg.norm(directions, axis=1), 1)
-        arrows = _arrow_points(points, directions)
-        np.testing.assert_allclose(arrows[:, 0], points)
-        np.testing.assert_allclose(
-            np.linalg.norm(arrows[:, 1] - points, axis=1), .025, atol=1e-8
-        )
         width = model.palm_width(model.seed)
         self.assertAlmostEqual(width, 0.0743529722472478)
         self.assertAlmostEqual(
@@ -119,88 +89,6 @@ class RetargetTests(unittest.TestCase):
             model.urdf_palm_length,
             model.middle_fingertip_surface_distance(bent),
         )
-
-    def test_residual_vector_diagnostics_match_loss_features(self):
-        retargeter = Retargeter(self.model)
-        targets = retargeter._targets(
-            self.points, finger_pad_directions=PAD_DIRECTIONS,
-            initial_joint_angles=self.angles,
-        )
-        human = _human_residual_vector_data(self.points, PAD_DIRECTIONS)
-        np.testing.assert_allclose(human["thumb_tip"][2], targets[0])
-        np.testing.assert_allclose(human["fingertip_vectors"][2], targets[2])
-        np.testing.assert_allclose(
-            np.vstack((human["thumb_pad"][2], human["finger_pads"][2])),
-            targets[3],
-        )
-        q = (self.model.lower + self.model.upper) / 2
-        robot = _robot_residual_vector_data(self.model, q)
-        values = self.model.features(q)[0]
-        np.testing.assert_allclose(robot["thumb_tip"][2], values[0])
-        np.testing.assert_allclose(robot["fingertip_vectors"][2], values[2])
-        np.testing.assert_allclose(
-            np.vstack((robot["thumb_pad"][2], robot["finger_pads"][2])),
-            values[3],
-        )
-
-    def test_residual_vector_labels_angles_and_group_selection(self):
-        self.assertEqual(
-            _vector_label("Index", np.array((.01, -.02, .03))),
-            "Index\nxyz [+10.0, -20.0, +30.0] mm\n|v| 37.4 mm",
-        )
-        direction_text = _vector_label(
-            "Thumb", np.array((1.0, 0.0, 0.0)),
-            direction=True, angle_error=90.0,
-        )
-        self.assertIn("|d| 1.000", direction_text)
-        self.assertIn("angle error 90.0°", direction_text)
-        np.testing.assert_allclose(
-            _pad_angle_errors(np.eye(3), np.roll(np.eye(3), 1, axis=1)),
-            (90.0, 90.0, 90.0),
-        )
-        self.assertIn("shared weight", _vector_group_info("fingertip_vectors"))
-        finger_pad_info = _vector_group_info("finger_pads")
-        self.assertIn("configured I=", finger_pad_info)
-        self.assertIn("solver effective I=", finger_pad_info)
-        self.assertIn(
-            f"L={C.RETARGET_LITTLE_PAD_WEIGHT / 3:g}", finger_pad_info
-        )
-
-        class Handle:
-            visible = False
-
-        viewer = Viewer.__new__(Viewer)
-        viewer.vector_lock = threading.Lock()
-        viewer.vector_group = "fingertip_vectors"
-        viewer.vector_available = {"human": True, "robot": True}
-        viewer.human_vector_handles = {
-            group: [(Handle(), Handle()) for _ in items]
-            for group, items in VECTOR_ITEMS.items()
-        }
-        viewer.robot_vector_handles = {
-            group: [(Handle(), Handle()) for _ in items]
-            for group, items in VECTOR_ITEMS.items()
-        }
-        viewer.set_vector_group("thumb_pad")
-        for handles in (viewer.human_vector_handles, viewer.robot_vector_handles):
-            self.assertTrue(all(
-                arrow.visible and label.visible
-                for arrow, label in handles["thumb_pad"]
-            ))
-            self.assertTrue(all(
-                not arrow.visible and not label.visible
-                for group, items in handles.items() if group != "thumb_pad"
-                for arrow, label in items
-            ))
-        with self.assertRaises(ValueError):
-            viewer.set_vector_group("invalid")
-        self.assertEqual(viewer.vector_group, "thumb_pad")
-        viewer.set_vector_group("off")
-        self.assertFalse(any(
-            arrow.visible or label.visible
-            for handles in (viewer.human_vector_handles, viewer.robot_vector_handles)
-            for items in handles.values() for arrow, label in items
-        ))
 
     def test_initial_joint_angle_contract(self):
         copied = self.angles.copy()
@@ -495,7 +383,7 @@ class RetargetTests(unittest.TestCase):
             sum(value for name, value in losses.items() if name != "total"),
             losses["total"],
         )
-        self.assertIn("thumb pad", _loss_text(losses))
+        self.assertIn("thumb_pad", losses)
 
         with self.assertRaisesRegex(ValueError, "Initial joint angles"):
             Retargeter(self.model).solve(self.points)
@@ -709,82 +597,6 @@ class RetargetTests(unittest.TestCase):
         finally:
             worker.close()
 
-    def test_latency_text_contract(self):
-        self.assertEqual(_latency_text(None), "waiting")
-        self.assertEqual(_latency_text(float("nan")), "waiting")
-        self.assertEqual(_latency_text(-1.0), "waiting")
-        self.assertEqual(_latency_text(12.34), "12.3 ms")
-        self.assertEqual(_render_time_text(None), "render waiting")
-        self.assertEqual(_render_time_text(0.26), "render 0.3 ms")
-        self.assertIn("SLSQP           3.2 ms", _timing_breakdown_text({"slsqp": 3.2}))
-        self.assertNotIn("output filter", _timing_breakdown_text({"output_filter": 1.0}))
-        self.assertEqual(
-            _angle_text(
-                "Input thumb", (), np.empty(0), 0.086, 0.1234, 0.0567, 0.0789
-            ),
-            "Input thumb\npalm width   86.0 mm\npalm length  123.4 mm"
-            "\nraw palm length   56.7 mm\nraw palm width   78.9 mm",
-        )
-        self.assertEqual(
-            _angle_text(
-                "MMHand thumb", (), np.empty(0), 0.07435, 0.1312,
-                palm_width_label="MMHand palm width",
-                middle_tip_label="MMHand URDF palm length",
-            ),
-            "MMHand thumb\nMMHand palm width   74.3 mm"
-            "\nMMHand URDF palm length  131.2 mm",
-        )
-
-    def test_viewer_process_is_non_blocking_and_reports_child_errors(self):
-        from viewer_process import ViewerProcess
-
-        frame = InputFrame.empty(time.monotonic(), "WAITING")
-        viewer = ViewerProcess(_factory=_SlowViewer)
-        try:
-            started = time.monotonic()
-            for _ in range(10):
-                viewer.update(frame)
-            self.assertLess(time.monotonic() - started, 0.08)
-            with self.assertRaises(ValueError):
-                ready = InputFrame(
-                    time.monotonic(), self.points, "Left", True, "TRACKING",
-                    finger_pad_directions=PAD_DIRECTIONS,
-                    initial_joint_angles=self.angles,
-                )
-                viewer.update(ready, np.zeros(20))
-        finally:
-            viewer.close()
-
-        viewer = ViewerProcess(_factory=_FailingViewer)
-        try:
-            viewer.update(frame)
-            deadline = time.monotonic() + 2.0
-            while time.monotonic() < deadline:
-                try:
-                    viewer.update(frame)
-                except RuntimeError as error:
-                    self.assertIn("fake viewer failure", str(error))
-                    break
-                time.sleep(0.01)
-            else:
-                self.fail("viewer child error was not propagated")
-        finally:
-            viewer.close()
-
-    def test_dashboard_skips_occupied_web_port(self):
-        import socket
-        from http.server import BaseHTTPRequestHandler
-
-        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as busy:
-            busy.bind(("0.0.0.0", 0))
-            busy.listen(1)
-            port = busy.getsockname()[1]
-            server = _bind_dashboard_server(BaseHTTPRequestHandler, port)
-            try:
-                self.assertGreater(server.server_address[1], port)
-            finally:
-                server.server_close()
-
     def test_ros_contract(self):
         class Message:
             def __init__(self): self.layout, self.data = None, []
@@ -852,7 +664,7 @@ class HumanDisplayTests(unittest.TestCase):
     def setUp(self):
         self.points = hand()
         self.directions = PAD_DIRECTIONS
-        self.matrix, self.width, self.cmc = _human_display_frame(
+        self.matrix, self.width, self.cmc = human_display_frame(
             self.points, self.directions
         )
 
@@ -887,7 +699,7 @@ class HumanDisplayTests(unittest.TestCase):
         factor = 1.7
         moved = self.points @ rotation.T * factor + translation
         turned = self.directions @ rotation.T
-        matrix, width, _ = _human_display_frame(moved, turned)
+        matrix, width, _ = human_display_frame(moved, turned)
         np.testing.assert_allclose(
             self.shown(self.points),
             self.shown(moved, matrix, width),
@@ -896,10 +708,10 @@ class HumanDisplayTests(unittest.TestCase):
 
     def test_degenerate_frame_is_rejected(self):
         with self.assertRaises(ValueError):
-            _human_display_frame(np.zeros((21, 3)), self.directions)
+            human_display_frame(np.zeros((21, 3)), self.directions)
 
     def test_display_without_pad_directions(self):
-        matrix, width, _ = _human_display_frame(self.points, None)
+        matrix, width, _ = human_display_frame(self.points, None)
         self.assertTrue(np.isfinite(matrix).all())
         self.assertAlmostEqual(width, self.width)
         np.testing.assert_allclose(matrix.T @ matrix, np.eye(3), atol=1e-12)

@@ -11,9 +11,7 @@ INPUT_SOURCE = "wilor"  # "mediapipe", "wilor", or "manus"
 
 # Camera (WiLoR and MediaPipe) -------------------------------------------------
 
-# Windows: integer camera index (0 = built-in camera). Linux: V4L2 index or
-# "/dev/videoN" path.
-CAMERA_DEVICE = "/dev/video0"  # V4L2 index or /dev/videoN path
+# The device itself is chosen in the console's connection bar.
 CAMERA_WIDTH, CAMERA_HEIGHT, CAMERA_FPS = 640, 480, 30
 
 # WILOR ------------------------------------------------------------------------
@@ -120,7 +118,7 @@ RETARGET_MAX_EVALUATIONS = 15
 RETARGET_FTOL = 3e-5
 
 
-# Runtime output and viewer ----------------------------------------------------
+# Runtime output and console ----------------------------------------------------
 
 # 来源坐标中的 21 点 ROS 2 topic 名称。
 KEYPOINT_TOPIC = "/mmhand/keypoints"
@@ -132,12 +130,16 @@ PAD_DIRECTION_LAYOUT = "mmhand_teleop:finger_pad_directions:v2:source_unit"
 ROBOT_TOPIC = "/mmhand/joint_angle_deg"
 # 机器人 Float32MultiArray layout 标签：J00～J20 顺序、单位 degree。
 ROBOT_LAYOUT = "mmhand:J00-J20:urdf_deg"
-# 汇总左右图和两个 Viser iframe 的 HTTP dashboard 端口；被占用时自动换空闲端口。
+# 控制台端口；被占用时自动换空闲端口。
 WEB_PORT = 8080
-# 两个 Viser 服务端口：(输入人手窗口, MMHand 机器人窗口)。
-VIEW_PORTS = (
-    8081,  # 第 1 项：输入人手 Viser 端口。
-    8082,  # 第 2 项：MMHand Viser 端口。
-)
-# Dashboard JPEG 和状态文本的最大刷新频率，单位 Hz。
+# 相机画面和状态文本的最大刷新频率，单位 Hz。
 WEB_FPS = 30
+
+# MMHand palm stereo camera ----------------------------------------------------
+# The device is chosen in the connection bar. The Waveshare AR0144 stereo
+# module's raw UVC frame is the two eyes side-by-side; the panel shows it as
+# received.
+PALM_CAMERA_SIZE = (1280, 480)
+PALM_CAMERA_FPS = 30
+# UVC only delivers the full stereo frame with MJPG; None keeps the backend default.
+PALM_CAMERA_FOURCC = "MJPG"

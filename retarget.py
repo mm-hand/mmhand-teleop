@@ -253,7 +253,7 @@ class RobotModel:
         # and ~24 degrees.
         skeleton = self.skeleton_points(self.seed)
         self.cmc_origin, self.cmc_frame = compute_cmc_frame(skeleton)
-        # Legacy aliases: the viewer and diagnostics still speak in palm-frame terms.
+        # Legacy aliases: the display and diagnostics still speak in palm-frame terms.
         self.palm_frame = self.cmc_frame
         self.palm_position = self.cmc_origin
         cmc = self.joints["Thumb_CMC"]

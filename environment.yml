@@ -14,8 +14,7 @@ dependencies:
   - ros-jazzy-ros-base
   - ros-jazzy-std-msgs
   - ros-jazzy-rmw-cyclonedds-cpp
-  - viser=1.0.30
-  - yourdfpy=0.0.60
+  - nicegui=3.16.0
   - opencv=5.0
   - scipy=1.14
   - git-lfs

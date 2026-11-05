@@ -7,7 +7,6 @@ import numpy as np
 
 from config import (
     WILOR_ASSET_DIR,
-    CAMERA_DEVICE,
     CAMERA_FPS,
     CAMERA_HEIGHT,
     CAMERA_WIDTH,
@@ -263,7 +262,7 @@ def preview(frame, detection=None, mesh=None):
 
 
 class WilorSource:
-    def __init__(self):
+    def __init__(self, device=None):
         paths = {name: WILOR_ASSET_DIR / name for name in (
             "detector_fp16.onnx", "wilor_fp16.onnx", "joint_regressor.npy",
             "mano_faces.npy",
@@ -281,7 +280,7 @@ class WilorSource:
             raise ValueError("Invalid WiLoR geometry assets")
         self.detection = None
         self.camera = OpenCVCamera(
-            CAMERA_DEVICE, CAMERA_WIDTH, CAMERA_HEIGHT, CAMERA_FPS
+            device, CAMERA_WIDTH, CAMERA_HEIGHT, CAMERA_FPS
         )
         self.point_filter = OneEuro(*WILOR_POINT_FILTER)
         self.direction_filter = OneEuro(*WILOR_DIRECTION_FILTER)

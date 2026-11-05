@@ -160,6 +160,39 @@ def ensure_calibration(
     )
 
 
+def import_saved_calibration(
+    transport,
+    *,
+    directory=MANUS_CALIBRATION_DIR,
+    handedness="Left",
+    timeout=3.0,
+    output=print,
+):
+    """Import the saved .mcal for the connected glove without prompting.
+
+    The web GUI cannot answer the wizard's Enter prompts, so it uses this path.
+    A missing file is not fatal: the glove still tracks, and the source reports
+    "not calibrated" by itself. Returns the imported path, or None.
+    """
+
+    packet = wait_for_glove(
+        transport,
+        handedness=handedness,
+        timeout=timeout,
+        output=output,
+    )
+    path = calibration_path(directory, packet.handedness, packet.glove_id)
+    if not path.is_file():
+        output(
+            f"MANUS: no saved calibration {path}; run "
+            f"python -m input.manus.calibration --side {str(handedness).lower()}"
+        )
+        return None
+    transport.calibration_import(packet.glove_id, path.read_bytes())
+    output(f"MANUS calibration imported: {path}")
+    return path
+
+
 def _parse_args(argv=None):
     parser = argparse.ArgumentParser(
         description="Run the official MANUS Core Integrated terminal calibration."

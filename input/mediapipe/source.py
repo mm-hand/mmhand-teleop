@@ -10,7 +10,6 @@ import cv2
 import numpy as np
 
 from config import (
-    CAMERA_DEVICE,
     CAMERA_FPS,
     CAMERA_HEIGHT,
     CAMERA_WIDTH,
@@ -53,7 +52,7 @@ def _preview(frame, landmarks=None):
 
 
 class MediaPipeSource:
-    def __init__(self):
+    def __init__(self, device=None):
         path = Path(MEDIAPIPE_MODEL_PATH)
         if not path.is_file():
             raise FileNotFoundError(
@@ -73,7 +72,7 @@ class MediaPipeSource:
         self.mp = mp
         self.landmarker = vision.HandLandmarker.create_from_options(options)
         self.camera = OpenCVCamera(
-            CAMERA_DEVICE, CAMERA_WIDTH, CAMERA_HEIGHT, CAMERA_FPS
+            device, CAMERA_WIDTH, CAMERA_HEIGHT, CAMERA_FPS
         )
         self.point_filter = OneEuro(*MEDIAPIPE_POINT_FILTER)
         self.handedness = None

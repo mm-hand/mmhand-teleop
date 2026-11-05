@@ -11,11 +11,18 @@ from config import (
 
 
 class RosOutput:
-    def __init__(self):
+    def __init__(self, signal_handlers=True):
         import rclpy
         from std_msgs.msg import Float32MultiArray
 
-        rclpy.init(args=None)
+        if signal_handlers:
+            rclpy.init(args=None)
+        else:
+            # rclpy refuses to own SIGINT outside the main thread, and the web
+            # GUI toggles ROS from an event-loop callback that uvicorn owns.
+            from rclpy.signals import SignalHandlerOptions
+
+            rclpy.init(args=None, signal_handler_options=SignalHandlerOptions.NO)
         self.rclpy, self.message = rclpy, Float32MultiArray
         self.node = rclpy.create_node("mmhand_teleop")
         self.point_publisher = self.node.create_publisher(Float32MultiArray, KEYPOINT_TOPIC, 1)

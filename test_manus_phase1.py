@@ -17,7 +17,7 @@ from input.manus.adapter import (
     adapt_raw_skeleton,
     convert_manus25_to_standard21,
 )
-from input.manus.calibration import ensure_calibration
+from input.manus.calibration import ensure_calibration, import_saved_calibration
 from input.manus.source import (
     CalibrationStep,
     MANUS_THUMB_DIP_TO_PIP_GAIN,
@@ -372,16 +372,43 @@ class ManusPhase1Tests(unittest.TestCase):
             create_source()
         self.assertTrue(source.closed)
 
-    def test_track_creates_nothing_after_failed_calibration_gate(self):
-        arguments = type("Args", (), {"ros": False, "sim": False})()
-        with patch("track._parse_args", return_value=arguments), patch(
-            "track.create_source", side_effect=RuntimeError("calibration required")
-        ), patch("track.Retargeter") as retargeter, patch(
-            "track.ViewerProcess"
-        ) as viewer, self.assertRaisesRegex(RuntimeError, "calibration required"):
-            track.main()
-        retargeter.assert_not_called()
-        viewer.assert_not_called()
+    def test_create_source_closes_manus_when_calibration_gate_fails(self):
+        source = FakeTransport()
+        source.transport = object()
+        with patch("input.INPUT_SOURCE", "manus"), patch(
+            "input.manus.source.ManusSource", return_value=source
+        ), patch(
+            "input.manus.calibration.ensure_calibration",
+            side_effect=RuntimeError("calibration required"),
+        ), self.assertRaisesRegex(RuntimeError, "calibration required"):
+            create_source()
+        self.assertTrue(source.closed)
+
+    def test_create_source_imports_a_saved_calibration_without_the_wizard(self):
+        source = FakeTransport()
+        source.transport = object()
+        with patch("input.INPUT_SOURCE", "manus"), patch(
+            "input.manus.source.ManusSource", return_value=source
+        ), patch(
+            "input.manus.calibration.ensure_calibration"
+        ) as ensure, patch(
+            "input.manus.calibration.import_saved_calibration",
+            return_value="saved.mcal",
+        ) as imports:
+            self.assertIs(create_source(calibrate=False), source)
+        ensure.assert_not_called()
+        imports.assert_called_once_with(source.transport)
+        self.assertEqual(source.calibration_path, "saved.mcal")
+
+    def test_import_saved_calibration_does_not_import_a_missing_file(self):
+        transport = FakeCalibrationTransport(raw_packet())
+        with TemporaryDirectory() as directory:
+            path = import_saved_calibration(
+                transport, directory=directory, timeout=1.0,
+                output=lambda _message: None,
+            )
+        self.assertIsNone(path)
+        self.assertNotIn("import", [call[0] for call in transport.calls])
 
 if __name__ == "__main__":
     unittest.main()

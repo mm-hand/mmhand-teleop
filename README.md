@@ -18,6 +18,14 @@ conda activate mmhand
 python -m pip install -r input/wilor/requirements.txt
 ```
 
+`environment.yml` installs the console's `nicegui`, which brings FastAPI and
+uvicorn. If you reuse an existing environment instead of creating one, install
+the console dependency by hand:
+
+```bash
+python -m pip install nicegui==3.16.0
+```
+
 The requirements file installs ONNX Runtime with its CUDA and cuDNN
 dependencies; WiLoR requires `CUDAExecutionProvider` and an NVIDIA GPU.
 
@@ -58,32 +66,52 @@ SAPIEN is optional and used only with `--sim`:
 All runtime settings live in `config.py`:
 
 ```python
-INPUT_SOURCE = "mediapipe"   # "mediapipe", "wilor", or "manus"
-CAMERA_DEVICE = 0            # Windows camera index or Linux V4L2 index/path
+INPUT_SOURCE = "wilor"   # "mediapipe", "wilor", or "manus"
 ```
 
+Cameras are not configured in `config.py`: the connection bar lists the
+available devices, preselects the first capture node, and leaves the palm
+camera unchosen until you pick one.
+
 ```bash
-python track.py          # dashboard and ROS 2 publishing
-python track.py --no-ros # dashboard only, without ROS
+python track.py          # console with ROS 2 output on
+python track.py --no-ros # console with ROS 2 output off
 python track.py --sim    # also open the optional SAPIEN grasp window
 ```
 
 `--no-ros` and `--sim` are the only command-line arguments; every other setting
-lives in `config.py`. Open <http://localhost:8080>; the two 3D views are served
-on 8081 (input hand) and 8082 (MMHand). If one of these ports is already in use
-(for example by another dashboard), each server moves to the next free port and
-the `Dashboard: ...` URL printed at startup is the one to open.
+lives in `config.py`. `--sim` still opens the SAPIEN window and its keyboard
+control; the console itself does not show the simulation. The console opens
+in your browser automatically; if it does not, open the URL it prints (the
+default is <http://127.0.0.1:8080>, and a busy port moves to the next free
+one). The console has one connection bar (input source and
+camera, palm camera, ROS output), one status bar, and a 2x2 grid: gesture
+camera, palm stereo camera, input hand, retargeted MMHand. Both 3D panels are
+drawn in the page with NiceGUI's `ui.scene`: the input hand as a canonical
+joint/bone cloud, the MMHand as its URDF meshes posed by the 21 joint angles.
+The console is the only server; nothing else listens on a port.
 
-Only a ready left hand enters retargeting; a right hand is displayed only. With
-`INPUT_SOURCE = "manus"`, startup waits for a connected left glove and its
-calibration file before the viewer, retargeter, ROS, or simulation starts. The
-first WiLoR start loads the models and takes about 10-20 s.
+Devices start unconnected. The console connects the configured
+`INPUT_SOURCE` once at startup so `python track.py` still works, then every
+connection is owned by the Connect buttons. A MANUS Connect imports the saved
+`.mcal` if one exists and never runs the interactive wizard, which needs a
+terminal; calibrate with `python -m input.manus.calibration --side left` first.
+
+A V4L2 node has exactly one owner, so the second open reports
+`Cannot open camera ... (another program may already hold it)`: stop the
+previous console process, and give the palm panel a different node than the
+gesture camera. The Connect buttons stay disabled while an attempt runs, and a
+failed connect leaves its reason in the status bar.
+
+Only a ready left hand enters retargeting; a right hand is displayed only. The
+first WiLoR start loads the models and takes about 10-20 s; the Connect button
+stays busy meanwhile.
 
 The Input hand 3D panel uses a canonical display: the hand is expressed in its
 palm frame, palm toward the screen, and normalized by palm width, so moving or
 rotating the hand does not rotate or resize the view. Retargeting still uses
 the raw source coordinates. Without finger-pad normals (MediaPipe) the display
-uses the palm-frame normal and hides the pad arrows.
+uses the palm-frame normal.
 
 ## How it works
 
@@ -107,11 +135,13 @@ The previous solution is the next warm start; outputs are clipped to URDF
 limits. Input, retargeting, visualization, ROS, and simulation contain no
 device-specific branches.
 
-**Output.** `track.py` reads one frame per loop, submits ready left-hand frames
-to a background solver, and forwards the newest display snapshot to a separate
-Viewer process. The Viewer owns the two Viser scenes and the HTTP dashboard, so
-slow rendering never blocks acquisition or solving. ROS 2 output is published
-by default and `--no-ros` disables it; it sends
+**Output.** `gui.Teleop` reads one frame per loop, submits ready left-hand
+frames to a background solver, and publishes the newest display snapshot as two
+plain arrays (`human_points` for the input hand, `robot` for the joint angles).
+The page owns its 3D scenes and draws those arrays on its own timer, so the
+tracking thread never touches a UI element and a slow browser costs frames, not
+acquisition or solving. ROS 2 output is published while the
+console's ROS switch is on (`--no-ros` starts it off); it sends
 `std_msgs/msg/Float32MultiArray`:
 
 | Topic | Shape | Meaning |
@@ -138,8 +168,7 @@ config.py               runtime settings
 one_euro.py             ndarray One Euro filter
 retarget.py             URDF FK, analytic Jacobians, SLSQP retargeter
 ros.py                  ROS 2 publishers
-viewer.py               HTTP dashboard and two Viser scenes
-viewer_process.py       isolated Viewer process proxy
+scene.py                the two `ui.scene` 3D panels
 track.py                process entry point
 simulation/             optional SAPIEN grasp simulation
 test_*.py               unit tests
@@ -148,7 +177,7 @@ test_*.py               unit tests
 ## Tests and licenses
 
 ```bash
-python -m unittest -v test_hand_capture.py test_wilor.py test_manus_phase1.py test_mediapipe.py
+python -m unittest -v test_hand_capture.py test_wilor.py test_manus_phase1.py test_mediapipe.py test_gui.py
 python -m unittest -v test_simulation.py
 ```
 

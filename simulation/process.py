@@ -97,7 +97,7 @@ class GraspSimulationProcess:
         if not np.isfinite(startup_timeout) or startup_timeout <= 0:
             raise ValueError("startup_timeout must be positive and finite")
 
-        # The parent already owns camera, Viser, and CUDA threads. ``fork``
+        # The parent already owns camera, console, and CUDA threads. ``fork``
         # would duplicate that state and is unsafe for both CUDA and Vulkan.
         context = mp.get_context("spawn")
         self._command = context.RawArray("d", _JOINT_COUNT)
