@@ -1,6 +1,6 @@
-# mmhand_teleop
+# mmhand-teleop
 
-`mmhand_teleop` converts a monocular camera (WiLoR ONNX or MediaPipe) or a
+`mmhand-teleop` converts a monocular camera (WiLoR ONNX or MediaPipe) or a
 MANUS glove into one common 21-point hand observation, retargets the left hand
 to all 21 MMHand joints, and serves a browser dashboard. ROS 2 output is on by
 default; `--no-ros` runs the dashboard without it. The SAPIEN grasp simulation
@@ -184,4 +184,4 @@ python -m unittest -v test_simulation.py
 WiLoR model terms are in `input/wilor/assets/WILOR_MODEL_LICENSE.txt`; related
 notices are in `input/wilor/assets/THIRD_PARTY_NOTICES.md`. MANUS SDK terms ship
 with `input/manus/assets/`. The MMHand URDF and meshes come from
-[`mm-hand/structure`](https://github.com/mm-hand/structure).
+[`mm-hand/mmhand-structure`](https://github.com/mm-hand/mmhand-structure).
