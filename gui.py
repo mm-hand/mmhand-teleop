@@ -45,6 +45,11 @@ body{background:#F5F7FA;color:#1e293b}
 .panel-body{flex:1;min-height:0;position:relative;overflow:hidden;display:flex}
 .panel-body>*,.panel-body iframe{width:100%;height:100%;display:block;border:0}
 .panel-body img{object-fit:contain}
+.overlay{position:absolute;z-index:2;width:auto;height:auto;padding:5px 9px;
+  border-radius:4px;background:#101318dd;color:#bde2ff;pointer-events:none;
+  font:12px/1.35 ui-monospace,SFMono-Regular,Menlo,monospace;white-space:pre}
+.panel-body>.overlay-loss{right:6px;top:6px}
+.panel-body>.overlay-timing{left:6px;top:6px;color:#b8c5d6}
 """
 
 
@@ -73,15 +78,71 @@ def age_text(age, on):
     return "—" if age is None else f"{age * 1000:.0f} ms"
 
 
+# One row per weighted objective term, in the order the August dashboard used.
+LOSS_LABELS = (
+    ("thumb_tip", "thumb tip"),
+    ("thumb_proximal_bend", "thumb proximal"),
+    ("thumb_distal_bend", "thumb distal"),
+    ("finger_angles", "finger angles"),
+    ("fingertip_vectors", "fingertip vectors"),
+    ("thumb_pad", "thumb pad"),
+    ("finger_pads", "finger pads"),
+    ("total", "total"),
+)
+# One row per measured stage of a retargeted frame. `output_filter` is only
+# reported by older solvers; it stays visible as "waiting", like the old panel.
+TIMING_LABELS = (
+    ("worker_queue", "worker queue"),
+    ("targets", "targets"),
+    ("slsqp", "SLSQP"),
+    ("output_filter", "output filter"),
+    ("final_loss", "final loss"),
+    ("solver_overhead", "solver overhead"),
+    ("solve_total", "solve total"),
+)
+
+
+def milliseconds(value):
+    """Format one optional non-negative duration the way the console shows it."""
+    if value is None or not np.isfinite(value):
+        return "waiting"
+    return f"{value:.1f} ms"
+
+
+def loss_text(losses):
+    """Format the weighted objective's per-term values and their shares."""
+    lines = ["Weighted retarget loss"]
+    if not losses:
+        return "\n".join(lines + ["waiting"])
+    total = losses.get("total") or 0.0
+    for name, label in LOSS_LABELS:
+        value = losses.get(name)
+        text = "N/A" if value is None else (
+            f"{value:.3e}  {(100 * value / total if total else 0):5.1f}%"
+        )
+        lines.append(f"{label:<18}{text}")
+    return "\n".join(lines)
+
+
+def timing_text(timings):
+    """Format the measured components of one retargeted-frame latency."""
+    timings = timings or {}
+    return "\n".join(
+        f"{label:<16}{milliseconds(timings.get(name))}"
+        for name, label in TIMING_LABELS
+    )
+
+
 class Teleop:
     """Own the devices, the solver and the scenes; the page only talks to this."""
 
     def __init__(self, kind=INPUT_SOURCE, sim=False, ros=False):
         self.worker = RetargetWorker()
         self.source = self.palm = self.ros = self.sim = self.robot = None
-        self.human_points = None
+        self.human_points = self.human_directions = None
         self.status = "INPUT OFF"
         self.retarget_ms = None
+        self.losses = self.timings = None
         self.input_at = self.palm_at = None
         self.preview = self.palm_preview = BLACK
         self.preview_seq = self.palm_seq = 0
@@ -126,7 +187,8 @@ class Teleop:
     def disconnect_input(self):
         source, self.source = self.source, None
         self.worker.pause()
-        self.robot = self.human_points = None
+        self.robot = self.human_points = self.human_directions = None
+        self.losses = self.timings = None
         if source is not None:
             source.close()
 
@@ -168,6 +230,8 @@ class Teleop:
             "palm_on": self.palm is not None,
             "ros_on": self.ros is not None,
             "retarget_ms": self.retarget_ms,
+            "losses": self.losses,
+            "timings": self.timings,
             "preview_seq": self.preview_seq,
             "palm_seq": self.palm_seq,
             "input_age": None if self.input_at is None else now - self.input_at,
@@ -212,13 +276,13 @@ class Teleop:
             )
         else:
             worker.pause()
-            self.robot = None
+            self.robot = self.losses = self.timings = None
         output = worker.poll()
         if output is not None:
-            self.robot, self.retarget_ms = output[0], output[2]
+            self.robot, self.losses, self.retarget_ms, self.timings = output
             if ros is not None:
                 ros.joints(np.degrees(self.robot))
-        self.human_points = scene.display_points(
+        self.human_points, self.human_directions = scene.display_hand(
             frame.points, frame.finger_pad_directions
         )
         if frame.preview is not None:
@@ -364,6 +428,8 @@ def build_page(teleop):
             robot_status, body = panel("Retargeted MMHand")
             with body:
                 robot = scene.RobotScene(teleop.worker.model)
+                timing_label = ui.label().classes("overlay overlay-timing")
+                loss_label = ui.label().classes("overlay overlay-loss")
 
     def refresh_images():
         for index, (image, key, route) in enumerate((
@@ -380,10 +446,15 @@ def build_page(teleop):
         # idle console sends nothing at all.
         if teleop.human_points is not seen[0]:
             seen[0] = teleop.human_points
-            human.update(seen[0])
+            human.update(seen[0], teleop.human_directions)
         if teleop.robot is not seen[1]:
             seen[1] = teleop.robot
             robot.update(seen[1])
+
+    def restyle_robot():
+        # STL meshes load after the page is built, so keep re-applying the lit
+        # material style; the script skips materials it has already restyled.
+        ui.run_javascript(scene.style_script(robot.scene))
 
     def refresh_status():
         snap = teleop.snapshot()
@@ -393,6 +464,8 @@ def build_page(teleop):
         robot_status.set_text(
             "waiting" if snap["retarget_ms"] is None
             else f'{snap["retarget_ms"]:.1f} ms')
+        loss_label.set_text(loss_text(snap["losses"]))
+        timing_label.set_text(timing_text(snap["timings"]))
         input_age.set_text(f'Rx age: {age_text(snap["input_age"], snap["input_on"])}')
         palm_age.set_text(f'Rx age: {age_text(snap["palm_age"], snap["palm_on"])}')
         connect.set_text("Disconnect" if snap["input_on"] else "Connect")
@@ -409,6 +482,7 @@ def build_page(teleop):
 
     ui.timer(FRAME_PERIOD, refresh_images)
     ui.timer(SCENE_PERIOD, refresh_scenes)
+    ui.timer(2.0, restyle_robot)
     ui.timer(0.25, refresh_status, immediate=True)
 
 

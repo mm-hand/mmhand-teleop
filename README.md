@@ -89,6 +89,16 @@ camera, palm camera, ROS output), one status bar, and a 2x2 grid: gesture
 camera, palm stereo camera, input hand, retargeted MMHand. Both 3D panels are
 drawn in the page with NiceGUI's `ui.scene`: the input hand as a canonical
 joint/bone cloud, the MMHand as its URDF meshes posed by the 21 joint angles.
+Each panel fixes its camera: the retargeted panel derives the view and up axes
+from the URDF itself (palm normal and finger direction) and frames the seed pose
+so it fills the panel, while the input panel frames the normalized hand. That
+keeps both hands upright instead of tilted when the URDF changes. The input hand
+draws one orange arrow per fingertip along the observed pad normal (nothing for
+MediaPipe, which cannot observe fingertip pointing), and the retargeted panel
+shows the weighted loss terms at its top right and the solve-timing breakdown at
+its top left. `scene.style_script` relights that scene through
+`ui.run_javascript` because NiceGUI's fixed ambient light would otherwise render
+the URDF visuals as a flat silhouette.
 The console is the only server; nothing else listens on a port.
 
 Devices start unconnected. The console connects the configured
