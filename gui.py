@@ -19,7 +19,7 @@ import config as C
 import scene
 from config import INPUT_SOURCE, WEB_FPS, WEB_PORT
 from input import create_source
-from input.camera import OpenCVCamera, camera_devices, first_camera
+from input.camera import camera_devices, first_camera
 from retarget import RetargetWorker
 from ros import RosOutput
 
@@ -38,7 +38,11 @@ body{background:#F5F7FA;color:#1e293b}
 .status-bar{min-height:32px;padding:4px 12px;background:#eef2f7;gap:14px;flex-shrink:0}
 .status-chip{padding:4px 8px;border-radius:5px;color:#1e293b;font-weight:500;white-space:nowrap}
 .q-btn{text-transform:none;border-radius:6px;font-size:12px}
-.grid{flex:1;min-height:0;display:grid;grid-template-columns:1fr 1fr;grid-template-rows:1fr 1fr;gap:6px;padding:6px}
+.grid{flex:1;min-height:0;display:grid;grid-template-rows:1fr 1fr;gap:6px;padding:6px}
+.grid-top,.grid-bottom{display:grid;min-height:0;gap:6px}
+.grid-top{grid-template-columns:1fr;justify-items:center}
+.grid-top>.panel{width:min(50%,1200px);height:100%}
+.grid-bottom{grid-template-columns:1fr 1fr}
 .panel{display:flex;flex-direction:column;min-height:0;overflow:hidden;background:#181d25;border:1px solid #343b48}
 .panel-head{min-height:26px;padding:2px 10px;gap:8px;color:#dff;font-size:12px;flex-shrink:0}
 .panel-status{margin-left:auto;color:#9bd}
@@ -138,14 +142,14 @@ class Teleop:
 
     def __init__(self, kind=INPUT_SOURCE, sim=False, ros=False):
         self.worker = RetargetWorker()
-        self.source = self.palm = self.ros = self.sim = self.robot = None
+        self.source = self.ros = self.sim = self.robot = None
         self.human_points = self.human_directions = None
         self.status = "INPUT OFF"
         self.retarget_ms = None
         self.losses = self.timings = None
-        self.input_at = self.palm_at = None
-        self.preview = self.palm_preview = BLACK
-        self.preview_seq = self.palm_seq = 0
+        self.input_at = None
+        self.preview = BLACK
+        self.preview_seq = 0
         self.kind, self.use_sim, self.use_ros = kind, sim, ros
         self._stop = threading.Event()
         self._closed = False
@@ -167,15 +171,11 @@ class Teleop:
                 self.set_ros(True)
             except Exception as error:
                 self.status = f"ERROR · ROS 2: {error}"
-        for name, target in (("teleop-track", self._loop),
-                             ("teleop-palm", self._palm_loop)):
-            threading.Thread(target=target, name=name, daemon=True).start()
+        threading.Thread(target=self._loop, name="teleop-track",
+                         daemon=True).start()
 
     def connect_input(self, kind, device=None):
         device = device or first_camera()
-        palm = self.palm
-        if palm is not None and palm.device == device:
-            raise ValueError(f"{device} is already the palm camera")
         self.disconnect_input()
         try:
             self.source = create_source(kind, device, calibrate=False)
@@ -192,27 +192,6 @@ class Teleop:
         if source is not None:
             source.close()
 
-    def connect_palm(self, device):
-        if not device:
-            raise ValueError("choose a palm camera first")
-        camera = getattr(self.source, "camera", None)
-        if camera is not None and camera.device == device:
-            raise ValueError(f"{device} is already the gesture camera")
-        self.disconnect_palm()
-        try:
-            self.palm = OpenCVCamera(
-                device, *C.PALM_CAMERA_SIZE, C.PALM_CAMERA_FPS,
-                fourcc=C.PALM_CAMERA_FOURCC,
-            )
-        except Exception as error:
-            self.status = f"ERROR · palm: {error}"
-            raise
-
-    def disconnect_palm(self):
-        palm, self.palm = self.palm, None
-        if palm is not None:
-            palm.close()
-
     def set_ros(self, enabled):
         if enabled == (self.ros is not None):
             return
@@ -227,15 +206,12 @@ class Teleop:
         return {
             "status": self.status,
             "input_on": self.source is not None,
-            "palm_on": self.palm is not None,
             "ros_on": self.ros is not None,
             "retarget_ms": self.retarget_ms,
             "losses": self.losses,
             "timings": self.timings,
             "preview_seq": self.preview_seq,
-            "palm_seq": self.palm_seq,
             "input_age": None if self.input_at is None else now - self.input_at,
-            "palm_age": None if self.palm_at is None else now - self.palm_at,
         }
 
     def _loop(self):
@@ -294,39 +270,18 @@ class Teleop:
         if self.sim is not None and not self.sim.update(self.robot):
             self.sim = None
 
-    def _palm_loop(self):
-        after = 0
-        while not self._stop.is_set():
-            palm = self.palm
-            if palm is None:
-                after = 0
-                self._stop.wait(0.05)
-                continue
-            try:
-                after, frame, _ = palm.read(after)
-            except (TimeoutError, RuntimeError) as error:
-                self.status = f"ERROR · palm {type(error).__name__}: {error}"
-                self.disconnect_palm()
-                after = 0
-                continue
-            self.palm_at = time.monotonic()
-            encoded = jpeg(frame)
-            if encoded is not None:
-                self.palm_preview, self.palm_seq = encoded, self.palm_seq + 1
-
     def close(self):
         if self._closed:
             return
         self._closed = True
         self._stop.set()
         for thread in threading.enumerate():
-            if thread.name in ("teleop-track", "teleop-palm"):
+            if thread.name == "teleop-track":
                 thread.join(1.0)
         if self.sim is not None:
             sim, self.sim = self.sim, None
             sim.close()
         self.disconnect_input()
-        self.disconnect_palm()
         self.worker.close()
         self.set_ros(False)
 
@@ -349,7 +304,7 @@ def build_page(teleop):
               negative="#dc2626")
     ui.add_css(CSS)
     devices = camera_devices()
-    shown = [0, 0]  # last image seq per panel
+    shown = [0]  # last image seq per panel
     seen = [None, None]  # last human_points / robot array per scene
 
     with ui.element("div").classes("shell"):
@@ -362,20 +317,17 @@ def build_page(teleop):
             device = ui.select(
                 devices, label="Camera", value=next(iter(devices), None),
             ).props("dense outlined").classes("w-56")
+            with device: ui.tooltip(
+                "Colour capture nodes only; a depth node (e.g. RealSense Z16) "
+                "cannot be captured by OpenCV.")
             connect = ui.button("Connect", on_click=lambda: toggle_input()) \
                 .props("dense outline")
             input_age = ui.label().classes("text-xs whitespace-nowrap")
-            palm_device = ui.select(
-                devices, label="Palm camera", value=None,
-            ).props("dense outlined").classes("w-56")
-            palm_connect = ui.button("Connect", on_click=lambda: toggle_palm()) \
-                .props("dense outline")
-            palm_age = ui.label().classes("text-xs whitespace-nowrap")
             ui.space()
             ros = ui.switch("ROS output", on_change=lambda e: toggle_ros(e.value))
         with ui.row().classes("status-bar items-center w-full"):
             chips = [ui.label().classes("status-chip text-xs")
-                     for _ in range(4)]
+                     for _ in range(3)]
 
         kind.on_value_change(lambda e: device.set_enabled(e.value != "manus"))
         device.set_enabled(teleop.kind != "manus")
@@ -392,18 +344,6 @@ def build_page(teleop):
             finally:
                 connect.set_enabled(True)
 
-        async def toggle_palm():
-            if teleop.palm is not None:
-                await run.io_bound(teleop.disconnect_palm)
-                return
-            palm_connect.disable()
-            try:
-                await run.io_bound(teleop.connect_palm, palm_device.value)
-            except Exception as error:
-                ui.notify(f"palm camera: {error}", type="negative", timeout=10000)
-            finally:
-                palm_connect.set_enabled(True)
-
         async def toggle_ros(enabled):
             try:
                 await run.io_bound(teleop.set_ros, enabled)
@@ -412,34 +352,29 @@ def build_page(teleop):
                 ros.set_value(teleop.ros is not None)
 
         with ui.element("div").classes("grid"):
-            input_status, body = panel("Gesture camera")
-            with body:
-                # QImg fades every new source in over 0.28 s and never reaches full
-                # opacity at WEB_FPS; interactive_image is a plain, flicker-free img.
-                preview = ui.interactive_image("/preview.jpg") \
-                    .classes("w-full h-full")
-            palm_status, body = panel("MMHand palm stereo")
-            with body:
-                palm_image = ui.interactive_image("/palm.jpg") \
-                    .classes("w-full h-full")
-            human_status, body = panel("Input hand")
-            with body:
-                human = scene.HumanScene()
-            robot_status, body = panel("Retargeted MMHand")
-            with body:
-                robot = scene.RobotScene(teleop.worker.model)
-                timing_label = ui.label().classes("overlay overlay-timing")
-                loss_label = ui.label().classes("overlay overlay-loss")
+            with ui.element("div").classes("grid-top"):
+                input_status, body = panel("Gesture camera")
+                with body:
+                    # QImg fades every new source in over 0.28 s and never reaches
+                    # full opacity at WEB_FPS; interactive_image is a plain,
+                    # flicker-free img.
+                    preview = ui.interactive_image("/preview.jpg") \
+                        .classes("w-full h-full")
+            with ui.element("div").classes("grid-bottom"):
+                human_status, body = panel("Input hand")
+                with body:
+                    human = scene.HumanScene()
+                robot_status, body = panel("Retargeted MMHand")
+                with body:
+                    robot = scene.RobotScene(teleop.worker.model)
+                    timing_label = ui.label().classes("overlay overlay-timing")
+                    loss_label = ui.label().classes("overlay overlay-loss")
 
     def refresh_images():
-        for index, (image, key, route) in enumerate((
-            (preview, "preview_seq", "/preview.jpg"),
-            (palm_image, "palm_seq", "/palm.jpg"),
-        )):
-            seq = getattr(teleop, key)
-            if seq != shown[index]:
-                shown[index] = seq
-                image.set_source(f"{route}?{seq}")
+        seq = teleop.preview_seq
+        if seq != shown[0]:
+            shown[0] = seq
+            preview.set_source(f"/preview.jpg?{seq}")
 
     def refresh_scenes():
         # The tracking thread replaces these arrays; keep the identity so an
@@ -459,7 +394,6 @@ def build_page(teleop):
     def refresh_status():
         snap = teleop.snapshot()
         input_status.set_text(age_text(snap["input_age"], snap["input_on"]))
-        palm_status.set_text(age_text(snap["palm_age"], snap["palm_on"]))
         human_status.set_text("" if snap["input_on"] else "OFF")
         robot_status.set_text(
             "waiting" if snap["retarget_ms"] is None
@@ -467,12 +401,9 @@ def build_page(teleop):
         loss_label.set_text(loss_text(snap["losses"]))
         timing_label.set_text(timing_text(snap["timings"]))
         input_age.set_text(f'Rx age: {age_text(snap["input_age"], snap["input_on"])}')
-        palm_age.set_text(f'Rx age: {age_text(snap["palm_age"], snap["palm_on"])}')
         connect.set_text("Disconnect" if snap["input_on"] else "Connect")
-        palm_connect.set_text("Disconnect" if snap["palm_on"] else "Connect")
         for chip, (name, value) in zip(chips, (
             ("Input", snap["status"]),
-            ("Palm", "LIVE" if snap["palm_on"] else "OFFLINE"),
             ("ROS", "ON" if snap["ros_on"] else "OFF"),
             ("Retarget", "waiting" if snap["retarget_ms"] is None
              else f'{snap["retarget_ms"]:.1f} ms'),
@@ -496,11 +427,6 @@ def run_console(teleop, show=True):
     @app.get("/preview.jpg")
     def _preview():
         return Response(teleop.preview, media_type="image/jpeg",
-                        headers={"Cache-Control": "no-store"})
-
-    @app.get("/palm.jpg")
-    def _palm():
-        return Response(teleop.palm_preview, media_type="image/jpeg",
                         headers={"Cache-Control": "no-store"})
 
     try:

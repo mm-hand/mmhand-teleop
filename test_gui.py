@@ -2,7 +2,6 @@
 
 import threading
 import time
-import types
 import unittest
 from unittest.mock import MagicMock, patch
 from pathlib import Path
@@ -89,14 +88,14 @@ def make_teleop(**fields):
     """Build a Teleop without devices or threads."""
     teleop = Teleop.__new__(Teleop)
     teleop.worker = FakeWorker()
-    teleop.source = teleop.palm = teleop.ros = teleop.sim = teleop.robot = None
+    teleop.source = teleop.ros = teleop.sim = teleop.robot = None
     teleop.human_points = teleop.human_directions = None
     teleop.status = "INPUT OFF"
     teleop.retarget_ms = None
     teleop.losses = teleop.timings = None
-    teleop.input_at = teleop.palm_at = None
-    teleop.preview = teleop.palm_preview = gui.BLACK
-    teleop.preview_seq = teleop.palm_seq = 0
+    teleop.input_at = None
+    teleop.preview = gui.BLACK
+    teleop.preview_seq = 0
     teleop.kind, teleop.use_sim, teleop.use_ros = "mediapipe", False, False
     teleop._stop = threading.Event()
     teleop._closed = False
@@ -110,7 +109,6 @@ class SnapshotTests(unittest.TestCase):
         snap = teleop.snapshot()
         self.assertEqual(snap["status"], "INPUT OFF")
         self.assertFalse(snap["input_on"])
-        self.assertFalse(snap["palm_on"])
         self.assertIsNone(snap["retarget_ms"])
         self.assertIsNone(snap["losses"])
         self.assertIsNone(snap["timings"])
@@ -146,21 +144,12 @@ class SnapshotTests(unittest.TestCase):
         self.assertTrue(source.closed)
         self.assertTrue(teleop.worker.paused)
 
-    def test_snapshot_reports_ros_and_palm_state(self):
+    def test_snapshot_reports_ros_state(self):
         teleop = make_teleop(ros=FakeRos())
         snap = teleop.snapshot()
         self.assertTrue(snap["ros_on"])
-        self.assertFalse(snap["palm_on"])
         self.assertEqual(age_text(None, False), "OFF")
         self.assertIn("Rx age", f'Rx age: {age_text(0.0123, True)}')
-
-
-class FakeCamera:
-    def __init__(self, device):
-        self.device = device
-
-    def close(self):
-        pass
 
 
 class ConnectTests(unittest.TestCase):
@@ -170,23 +159,6 @@ class ConnectTests(unittest.TestCase):
             with self.assertRaises(RuntimeError):
                 teleop.connect_input("wilor", "/dev/video0")
         self.assertEqual(teleop.status, "ERROR · wilor: boom")
-
-    def test_failed_palm_connect_keeps_the_reason_in_the_status_bar(self):
-        teleop = make_teleop()
-        with patch("gui.OpenCVCamera", side_effect=RuntimeError("busy")):
-            with self.assertRaises(RuntimeError):
-                teleop.connect_palm("/dev/video0")
-        self.assertEqual(teleop.status, "ERROR · palm: busy")
-
-    def test_one_node_cannot_feed_both_panels(self):
-        teleop = make_teleop(palm=FakeCamera("/dev/video0"))
-        with self.assertRaisesRegex(ValueError, "palm camera"):
-            teleop.connect_input("wilor", "/dev/video0")
-        teleop = make_teleop(source=types.SimpleNamespace(
-            camera=FakeCamera("/dev/video0"), close=lambda: None))
-        with self.assertRaisesRegex(ValueError, "gesture camera"):
-            teleop.connect_palm("/dev/video0")
-
 
 class LoopTests(unittest.TestCase):
     def test_read_failure_closes_the_source_and_keeps_running(self):
@@ -201,32 +173,6 @@ class LoopTests(unittest.TestCase):
         thread.join(1.0)
         self.assertFalse(thread.is_alive())
         self.assertIn("camera unplugged", teleop.status)
-
-    def test_palm_frame_is_encoded_and_seq_advances(self):
-        class FakePalm:
-            def __init__(self):
-                self.calls = 0
-
-            def read(self, after):
-                self.calls += 1
-                if self.calls > 3:
-                    raise TimeoutError("done")
-                return after + 1, np.full((48, 128, 3), 7, np.uint8), 0.0
-
-            def close(self):
-                pass
-
-        teleop = make_teleop()
-        teleop.palm = FakePalm()
-        thread = threading.Thread(target=teleop._palm_loop, daemon=True)
-        thread.start()
-        deadline = time.monotonic() + 1.0
-        while teleop.palm is not None and time.monotonic() < deadline:
-            time.sleep(0.005)
-        teleop._stop.set()
-        thread.join(1.0)
-        self.assertGreater(teleop.palm_seq, 0)
-
 
 class StartTests(unittest.TestCase):
     def test_start_connects_and_advances_the_preview(self):
@@ -432,14 +378,14 @@ class PageTests(unittest.TestCase):
             gui.build_page(teleop)
         selects = [element for element in page_client.elements.values()
                    if isinstance(element, Select)]
-        self.assertEqual(len(selects), 3)  # input kind, camera, palm camera
-        for select in selects:  # the palm camera starts unchosen
+        self.assertEqual(len(selects), 2)  # input kind, camera
+        for select in selects:
             self.assertTrue(
                 select.value is None or select.value in select.options
             )
         live_images = [element for element in page_client.elements.values()
                        if isinstance(element, InteractiveImage)]
-        self.assertEqual(len(live_images), 2)  # gesture and palm previews
+        self.assertEqual(len(live_images), 1)  # gesture preview
         overlays = [element for element in page_client.elements.values()
                     if isinstance(element, Label) and "overlay" in element.classes]
         # weighted retarget loss and the solve-timing breakdown

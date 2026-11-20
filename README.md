@@ -70,8 +70,7 @@ INPUT_SOURCE = "wilor"   # "mediapipe", "wilor", or "manus"
 ```
 
 Cameras are not configured in `config.py`: the connection bar lists the
-available devices, preselects the first capture node, and leaves the palm
-camera unchosen until you pick one.
+available devices and preselects the first capture node for the gesture camera.
 
 ```bash
 python track.py          # console with ROS 2 output on
@@ -84,9 +83,9 @@ lives in `config.py`. `--sim` still opens the SAPIEN window and its keyboard
 control; the console itself does not show the simulation. The console opens
 in your browser automatically; if it does not, open the URL it prints (the
 default is <http://127.0.0.1:8080>, and a busy port moves to the next free
-one). The console has one connection bar (input source and
-camera, palm camera, ROS output), one status bar, and a 2x2 grid: gesture
-camera, palm stereo camera, input hand, retargeted MMHand. Both 3D panels are
+one). The console has one connection bar (input source and camera, ROS
+output), one status bar, a centered gesture-camera panel above two side-by-side
+3D panels: input hand and retargeted MMHand. Both 3D panels are
 drawn in the page with NiceGUI's `ui.scene`: the input hand as a canonical
 joint/bone cloud, the MMHand as its URDF meshes posed by the 21 joint angles.
 Each panel fixes its camera: the retargeted panel derives the view and up axes
@@ -108,10 +107,13 @@ connection is owned by the Connect buttons. A MANUS Connect imports the saved
 terminal; calibrate with `python -m input.manus.calibration --side left` first.
 
 A V4L2 node has exactly one owner, so the second open reports
-`Cannot open camera ... (another program may already hold it)`: stop the
-previous console process, and give the palm panel a different node than the
-gesture camera. The Connect buttons stay disabled while an attempt runs, and a
-failed connect leaves its reason in the status bar.
+`Cannot open camera ... (it may already be held by another program, or the node
+may not offer a colour format OpenCV can capture)`: stop the previous console
+process, and give MM-Hand Console's palm stereo camera a different node than the
+gesture camera. A RealSense depth node (Z16) reports the same error because
+OpenCV cannot capture it as a colour stream; pick the colour node instead. The
+Connect button stays disabled while an attempt runs, and a failed connect leaves
+its reason in the status bar.
 
 Only a ready left hand enters retargeting; a right hand is displayed only. The
 first WiLoR start loads the models and takes about 10-20 s; the Connect button

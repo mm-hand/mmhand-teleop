@@ -135,11 +135,3 @@ WEB_PORT = 8080
 # 相机画面和状态文本的最大刷新频率，单位 Hz。
 WEB_FPS = 30
 
-# MMHand palm stereo camera ----------------------------------------------------
-# The device is chosen in the connection bar. The Waveshare AR0144 stereo
-# module's raw UVC frame is the two eyes side-by-side; the panel shows it as
-# received.
-PALM_CAMERA_SIZE = (1280, 480)
-PALM_CAMERA_FPS = 30
-# UVC only delivers the full stereo frame with MJPG; None keeps the backend default.
-PALM_CAMERA_FOURCC = "MJPG"

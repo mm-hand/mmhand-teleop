@@ -50,13 +50,16 @@ class OpenCVCamera:
         if device is None:
             raise ValueError("no camera selected")
         # A V4L2 node has exactly one owner: a second open fails, which looks
-        # like a missing camera unless the message says so.
+        # like a missing camera unless the message says so. A depth-only node
+        # (RealSense Z16) also fails here because OpenCV cannot capture it as
+        # a colour stream; the message names both causes.
         self.device = device
         self.capture = cv2.VideoCapture(device, _BACKEND)
         if not self.capture.isOpened():
             raise RuntimeError(
-                f"Cannot open camera {device!r} "
-                "(another program may already hold it)"
+                f"Cannot open camera {device!r}: it may already be held by "
+                "another program, or the node may not offer a colour format "
+                "OpenCV can capture"
             )
         if fourcc is not None:
             self.capture.set(
